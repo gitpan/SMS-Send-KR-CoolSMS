@@ -1,0 +1,22 @@
+---
+abstract: 'An SMS::Send driver for the coolsms.co.kr service'
+author:
+  - 'Keedi Kim - 김도형 <keedi@cpan.org>'
+build_requires: {}
+dynamic_config: 0
+generated_by: 'Dist::Zilla version 4.300030, CPAN::Meta::Converter version 2.120921'
+license: perl
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
+name: SMS-Send-KR-CoolSMS
+requires:
+  HTTP::Tiny: 0
+  IO::Socket::SSL: 1.84
+  SMS::Send: 0
+  parent: 0
+resources:
+  bugtracker: https://github.com/keedi/sms-send-kr-coolsms/issues
+  homepage: https://github.com/keedi/sms-send-kr-coolsms
+  repository: git://github.com/keedi/sms-send-kr-coolsms.git
+version: 0.001
