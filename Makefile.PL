@@ -18,12 +18,14 @@ my %WriteMakefileArgs = (
   "LICENSE" => "perl",
   "NAME" => "SMS::Send::KR::CoolSMS",
   "PREREQ_PM" => {
+    "DateTime" => 0,
+    "Digest::MD5" => 0,
     "HTTP::Tiny" => 0,
     "IO::Socket::SSL" => "1.84",
     "SMS::Send" => 0,
     "parent" => 0
   },
-  "VERSION" => "0.001",
+  "VERSION" => "0.002",
   "test" => {
     "TESTS" => "t/*.t"
   }
