@@ -1,6 +1,6 @@
 package SMS::Send::KR::CoolSMS;
 {
-  $SMS::Send::KR::CoolSMS::VERSION = '0.002';
+  $SMS::Send::KR::CoolSMS::VERSION = '0.003';
 }
 # ABSTRACT: An SMS::Send driver for the coolsms.co.kr service
 
@@ -174,7 +174,7 @@ sub send_sms {
     #
     # enc & password
     #
-    my $password;
+    my $password = $self->{_password};
     if ( $self->{_enc} && $self->{_enc} =~ m/^md5$/i ) {
         $password = md5_hex( $self->{_password} );
     }
@@ -254,7 +254,7 @@ SMS::Send::KR::CoolSMS - An SMS::Send driver for the coolsms.co.kr service
 
 =head1 VERSION
 
-version 0.002
+version 0.003
 
 =head1 SYNOPSIS
 
@@ -292,16 +292,12 @@ SMS::Send driver for sending SMS messages with the L<coolsms SMS service|http://
 =head2 _url
 
 Do not change this value except for testing purpose.
-Default is C<api.coolsms.co.kr/sendmsg>.
-
-our $TIMEOUT = 3;
-our $TYPE    = 'sms';
-our $COUNTRY = 'KR';
+Default is C<"api.coolsms.co.kr/sendmsg">.
 
 =head2 _agent
 
 The agent value is sent as the "User-Agent" header in the HTTP requests.
-Default is C<SMS-Send-KR-CoolSMS/#.###>.
+Default is C<"SMS-Send-KR-CoolSMS/#.###">.
 
 =head2 _ssl
 
@@ -326,7 +322,7 @@ Password to login for coolsms.
 =head2 _enc
 
 Password encryption method to transfer password over HTTP/HTTPS.
-Currently only C<md5> is supported.
+Currently only C<"md5"> is supported.
 
 =head2 _from
 
@@ -337,13 +333,13 @@ Source number to send sms.
 
 Type of sms.
 Currently only C<sms> is supported.
-Default is C<sms>.
+Default is C<"sms">.
 
 =head2 _country
 
 Country code to route the sms.
 This is for destination number.
-Default is C<KR>.
+Default is C<"KR">.
 
 =head1 METHODS
 
