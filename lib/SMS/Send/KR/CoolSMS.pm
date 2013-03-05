@@ -1,6 +1,6 @@
 package SMS::Send::KR::CoolSMS;
 {
-  $SMS::Send::KR::CoolSMS::VERSION = '0.003';
+  $SMS::Send::KR::CoolSMS::VERSION = '0.004';
 }
 # ABSTRACT: An SMS::Send driver for the coolsms.co.kr service
 
@@ -135,6 +135,18 @@ sub new {
     warn("$class->new: _password is needed\n"), return unless $params{_password};
     warn("$class->new: _from is needed\n"),     return unless $params{_from};
 
+    #
+    # selective load IO::Socket::SSL
+    # some platforms does not support IO::Socket::SSL & Net::SSLeay
+    #
+    if ( $params{_ssl} ) {
+        my $ret = eval {require IO::Socket::SSL; IO::Socket::SSL->VERSION(1.84)};
+        unless ( $ret ) {
+            warn("$class->new: IO::Socket::SSL 1.84 must be installed for https support\n");
+            return;
+        }
+    }
+
     my $self = bless \%params, $class;
     return $self;
 }
@@ -163,13 +175,23 @@ sub send_sms {
     $ret{reason} = 'text is needed', return \%ret unless $text;
     $ret{reason} = 'to is needed',   return \%ret unless $to;
 
-    my $http = HTTP::Tiny->new(
-        agent       => $self->{_agent},
-        timeout     => $self->{_timeout},
-        SSL_options => { SSL_hostname => q{} }, # coolsms does not support SNI
-    ) or $ret{reason} = 'cannot generate HTTP::Tiny object', return \%ret;
-
-    my $url  = $self->{_ssl} ? "https://$URL" : "http://$URL";
+    my $http;
+    my $url;
+    if ( $self->{_ssl} ) {
+        $http = HTTP::Tiny->new(
+            agent       => $self->{_agent},
+            timeout     => $self->{_timeout},
+            SSL_options => { SSL_hostname => q{} }, # coolsms does not support SNI
+        ) or $ret{reason} = 'cannot generate HTTP::Tiny object', return \%ret;
+        $url = "https://$URL";
+    }
+    else {
+        $http = HTTP::Tiny->new(
+            agent   => $self->{_agent},
+            timeout => $self->{_timeout},
+        ) or $ret{reason} = 'cannot generate HTTP::Tiny object', return \%ret;
+        $url  = "http://$URL";
+    }
 
     #
     # enc & password
@@ -254,7 +276,7 @@ SMS::Send::KR::CoolSMS - An SMS::Send driver for the coolsms.co.kr service
 
 =head1 VERSION
 
-version 0.003
+version 0.004
 
 =head1 SYNOPSIS
 
@@ -286,6 +308,7 @@ version 0.003
 =head1 DESCRIPTION
 
 SMS::Send driver for sending SMS messages with the L<coolsms SMS service|http://api.coolsms.co.kr>.
+You'll need L<IO::Socket::SSL> at least 1.84 version to use SSL support for HTTPS.
 
 =head1 ATTRIBUTES
 
@@ -388,6 +411,10 @@ L<SMS::Send>
 =item *
 
 L<SMS::Send::Driver>
+
+=item *
+
+L<IO::Socket::SSL>
 
 =item *
 
