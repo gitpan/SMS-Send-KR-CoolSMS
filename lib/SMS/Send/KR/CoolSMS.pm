@@ -1,6 +1,6 @@
 package SMS::Send::KR::CoolSMS;
 {
-  $SMS::Send::KR::CoolSMS::VERSION = '0.004';
+  $SMS::Send::KR::CoolSMS::VERSION = '0.005';
 }
 # ABSTRACT: An SMS::Send driver for the coolsms.co.kr service
 
@@ -276,7 +276,7 @@ SMS::Send::KR::CoolSMS - An SMS::Send driver for the coolsms.co.kr service
 
 =head1 VERSION
 
-version 0.004
+version 0.005
 
 =head1 SYNOPSIS
 
