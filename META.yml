@@ -20,4 +20,4 @@ resources:
   bugtracker: https://github.com/keedi/sms-send-kr-coolsms/issues
   homepage: https://github.com/keedi/sms-send-kr-coolsms
   repository: git://github.com/keedi/sms-send-kr-coolsms.git
-version: 0.006
+version: 0.007

@@ -1,6 +1,6 @@
 package SMS::Send::KR::CoolSMS;
 {
-  $SMS::Send::KR::CoolSMS::VERSION = '0.006';
+  $SMS::Send::KR::CoolSMS::VERSION = '0.007';
 }
 # ABSTRACT: An SMS::Send driver for the coolsms.co.kr service
 
@@ -131,9 +131,9 @@ sub new {
         @_,
     );
 
-    warn("$class->new: _user is needed\n"),     return unless $params{_user};
-    warn("$class->new: _password is needed\n"), return unless $params{_password};
-    warn("$class->new: _from is needed\n"),     return unless $params{_from};
+    die "$class->new: _user is needed\n"     unless $params{_user};
+    die "$class->new: _password is needed\n" unless $params{_password};
+    die "$class->new: _from is needed\n"     unless $params{_from};
 
     #
     # selective load IO::Socket::SSL
@@ -142,7 +142,7 @@ sub new {
     if ( $params{_ssl} ) {
         my $ret = eval {require IO::Socket::SSL; IO::Socket::SSL->VERSION(1.84)};
         unless ( $ret ) {
-            warn("$class->new: IO::Socket::SSL 1.84 must be installed for https support\n");
+            die "$class->new: IO::Socket::SSL 1.84 must be installed for https support\n";
             return;
         }
     }
@@ -276,7 +276,7 @@ SMS::Send::KR::CoolSMS - An SMS::Send driver for the coolsms.co.kr service
 
 =head1 VERSION
 
-version 0.006
+version 0.007
 
 =head1 SYNOPSIS
 
