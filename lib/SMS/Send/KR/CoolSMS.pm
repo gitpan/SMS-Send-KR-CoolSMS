@@ -1,6 +1,6 @@
 package SMS::Send::KR::CoolSMS;
 {
-  $SMS::Send::KR::CoolSMS::VERSION = '0.007';
+  $SMS::Send::KR::CoolSMS::VERSION = '0.008';
 }
 # ABSTRACT: An SMS::Send driver for the coolsms.co.kr service
 
@@ -162,6 +162,7 @@ sub send_sms {
 
     my $text  = $params{text};
     my $to    = $params{to};
+    my $from  = $params{_from} || $self->{_from};
     my $epoch = $params{_epoch};
     my $mid   = $params{_mid};
     my $gid   = $params{_gid};
@@ -234,7 +235,7 @@ sub send_sms {
         user     => $self->{_user},
         password => $password,
         enc      => $self->{_enc},
-        from     => $self->{_from},
+        from     => $from,
         type     => $self->{_type},
         country  => $country,
         to       => $to,
@@ -276,7 +277,7 @@ SMS::Send::KR::CoolSMS - An SMS::Send driver for the coolsms.co.kr service
 
 =head1 VERSION
 
-version 0.007
+version 0.008
 
 =head1 SYNOPSIS
 
@@ -293,8 +294,9 @@ version 0.007
 
     # send a message
     my $sent = $sender->send_sms(
-        text => 'You message may use up to 80 chars and must be utf8',
-        to   => '01025116893',
+        text  => 'You message may use up to 80 chars and must be utf8',
+        to    => '01025116893',
+        _from => '02114', # you can override $self->_from
     );
 
     unless ( $sent->{success} ) {
