@@ -1,23 +1,22 @@
 package SMS::Send::KR::CoolSMS;
-{
-  $SMS::Send::KR::CoolSMS::VERSION = '0.008';
-}
 # ABSTRACT: An SMS::Send driver for the coolsms.co.kr service
-
+$SMS::Send::KR::CoolSMS::VERSION = '1.000';
 use strict;
 use warnings;
 use parent qw( SMS::Send::Driver );
 
 use DateTime;
-use Digest::MD5 qw( md5_hex );
+use Digest::HMAC_MD5;
 use HTTP::Tiny;
+use JSON;
+use String::Random;
 
-our $URL     = "api.coolsms.co.kr/sendmsg";
+our $URL     = "api.coolsms.co.kr/1/send";
 our $AGENT   = 'SMS-Send-KR-CoolSMS/' . $SMS::Send::KR::CoolSMS::VERSION;
-our $SSL     = 0;
 our $TIMEOUT = 3;
-our $TYPE    = 'sms';
+our $TYPE    = 'SMS';
 our $COUNTRY = 'KR';
+our $DELAY   = 0;
 
 #
 # supported country code from coolsms HTTP API PDF document
@@ -118,34 +117,22 @@ my %country_no = map { $country_code{$_}{no} => $country_code{$_} } keys %countr
 sub new {
     my $class  = shift;
     my %params = (
-        _url      => $SMS::Send::KR::CoolSMS::URL,
-        _agent    => $SMS::Send::KR::CoolSMS::AGENT,
-        _ssl      => $SMS::Send::KR::CoolSMS::SSL,
-        _timeout  => $SMS::Send::KR::CoolSMS::TIMEOUT,
-        _user     => q{},
-        _password => q{},
-        _enc      => q{},
-        _from     => q{},
-        _type     => $SMS::Send::KR::CoolSMS::TYPE,
-        _country  => $SMS::Send::KR::CoolSMS::COUNTRY,
+        _url        => $SMS::Send::KR::CoolSMS::URL,
+        _agent      => $SMS::Send::KR::CoolSMS::AGENT,
+        _timeout    => $SMS::Send::KR::CoolSMS::TIMEOUT,
+        _api_key    => q{},
+        _api_secret => q{},
+        _from       => q{},
+        _type       => $SMS::Send::KR::CoolSMS::TYPE,
+        _country    => $SMS::Send::KR::CoolSMS::COUNTRY,
+        _delay      => $SMS::Send::KR::CoolSMS::DELAY,
         @_,
     );
 
-    die "$class->new: _user is needed\n"     unless $params{_user};
-    die "$class->new: _password is needed\n" unless $params{_password};
-    die "$class->new: _from is needed\n"     unless $params{_from};
-
-    #
-    # selective load IO::Socket::SSL
-    # some platforms does not support IO::Socket::SSL & Net::SSLeay
-    #
-    if ( $params{_ssl} ) {
-        my $ret = eval {require IO::Socket::SSL; IO::Socket::SSL->VERSION(1.84)};
-        unless ( $ret ) {
-            die "$class->new: IO::Socket::SSL 1.84 must be installed for https support\n";
-            return;
-        }
-    }
+    die "$class->new: _api_key is needed\n"    unless $params{_api_key};
+    die "$class->new: _api_secret is needed\n" unless $params{_api_secret};
+    die "$class->new: _from is needed\n"       unless $params{_from};
+    die "$class->new: _type is invalid\n"      unless $params{_type} && $params{_type} =~ m/^(SMS|LMS)$/i;
 
     my $self = bless \%params, $class;
     return $self;
@@ -154,18 +141,25 @@ sub new {
 sub send_sms {
     my $self   = shift;
     my %params = (
-        _epoch => q{},
-        _mid   => q{},
-        _gid   => q{},
+        _from    => $self->{_from},
+        _country => $self->{_country} || 'KR',
+        _type    => $self->{_type}    || 'SMS',
+        _delay   => $self->{_delay}   || 0,
+        _subject => $self->{_subject},
+        _epoch   => q{},
         @_,
     );
 
-    my $text  = $params{text};
-    my $to    = $params{to};
-    my $from  = $params{_from} || $self->{_from};
-    my $epoch = $params{_epoch};
-    my $mid   = $params{_mid};
-    my $gid   = $params{_gid};
+    my $text       = $params{text};
+    my $to         = $params{to};
+    my $from       = $params{_from};
+    my $country    = $params{_country};
+    my $type       = $params{_type};
+    my $delay      = $params{_delay};
+    my $subject    = $params{_subject};
+    my $epoch      = $params{_epoch};
+    my $api_key    = $self->{_api_key};
+    my $api_secret = $self->{_api_secret};
 
     my %ret = (
         success => 0,
@@ -173,39 +167,38 @@ sub send_sms {
         detail  => +{},
     );
 
-    $ret{reason} = 'text is needed', return \%ret unless $text;
-    $ret{reason} = 'to is needed',   return \%ret unless $to;
+    $ret{reason} = 'text is needed',   return \%ret unless $text;
+    $ret{reason} = 'to is needed',     return \%ret unless $to;
+    $ret{reason} = '_type is invalid', return \%ret unless $type && $type =~ m/^(SMS|LMS)$/i;
 
-    my $http;
-    my $url;
-    if ( $self->{_ssl} ) {
-        $http = HTTP::Tiny->new(
-            agent       => $self->{_agent},
-            timeout     => $self->{_timeout},
-            SSL_options => { SSL_hostname => q{} }, # coolsms does not support SNI
-        ) or $ret{reason} = 'cannot generate HTTP::Tiny object', return \%ret;
-        $url = "https://$URL";
-    }
-    else {
-        $http = HTTP::Tiny->new(
-            agent   => $self->{_agent},
-            timeout => $self->{_timeout},
-        ) or $ret{reason} = 'cannot generate HTTP::Tiny object', return \%ret;
-        $url  = "http://$URL";
-    }
+    my $http = HTTP::Tiny->new(
+        agent       => $self->{_agent},
+        timeout     => $self->{_timeout},
+        SSL_options => { SSL_hostname => q{} }, # coolsms does not support SNI
+    ) or $ret{reason} = 'cannot generate HTTP::Tiny object', return \%ret;
+    my $url = "https://$URL";
 
     #
-    # enc & password
+    # authentication
     #
-    my $password = $self->{_password};
-    if ( $self->{_enc} && $self->{_enc} =~ m/^md5$/i ) {
-        $password = md5_hex( $self->{_password} );
-    }
+    my %auth_params = do {
+        my $time       = time;
+        my $salt       = String::Random::random_regex('\w{30}');
+        my $signature  = Digest::HMAC_MD5::hmac_md5_hex( "$time$salt", $api_secret );
+
+         (
+            api_key   => $api_key,
+            timestamp => $time,
+            salt      => $salt,
+            signature => $signature,
+            algorithm => 'md5',
+            encoding  => 'hex',
+        );
+    };
 
     #
     # country & to: adjust country code and destination number
     #
-    my $country = $self->{_country};
     if ( $to =~ /^\+(\d{1})/ && $country_no{$1} ) {
         $country = $country_no{$1}{code};
         $to      =~ s/^\+\d{1}//;
@@ -223,7 +216,7 @@ sub send_sms {
     # datetime: reserve SMS
     #
     my $datetime;
-    if ( $epoch ) {
+    if ($epoch) {
         my $t = DateTime->from_epoch(
             time_zone => 'Asia/Seoul',
             epoch     => $epoch,
@@ -231,29 +224,37 @@ sub send_sms {
         $datetime = $t->ymd(q{}) . $t->hms(q{});
     }
 
+    #
+    # subject
+    #
+    undef $subject if $type =~ m/SMS/i;
+
     my %form = (
-        user     => $self->{_user},
-        password => $password,
-        enc      => $self->{_enc},
-        from     => $from,
-        type     => $self->{_type},
-        country  => $country,
+        %auth_params,
         to       => $to,
+        from     => $from,
         text     => $text,
+        type     => uc $type,
+        #image
+        #image_encoding
+        #refname
+        country  => $country,
         datetime => $datetime,
-        mid      => $mid,
-        gid      => $gid,
+        subject  => $subject,
+        charset  => 'utf8',
+        #srk
+        #mode
+        #extension
+        delay    => $delay,
     );
     $form{$_} or delete $form{$_} for keys %form;
 
     my $res = $http->post_form( $url, \%form );
     $ret{reason} = 'cannot get valid response for POST request';
     if ( $res && $res->{success} ) {
-        my %params = ( $res->{content} =~ /^([^=]+)=(.*?)$/gms );
-
-        $ret{detail}  = \%params;
-        $ret{reason}  = $params{'RESULT-MESSAGE'};
-        $ret{success} = 1 if $params{'RESULT-CODE'} eq '00';
+        $ret{detail} = decode_json( $res->{content} );
+        $ret{reason}  = $ret{detail}{result_message};
+        $ret{success} = 1 if $ret{detail}{result_code} eq '00';
     }
     else {
         $ret{detail} = $res;
@@ -269,7 +270,7 @@ __END__
 
 =pod
 
-=encoding utf-8
+=encoding UTF-8
 
 =head1 NAME
 
@@ -277,7 +278,7 @@ SMS::Send::KR::CoolSMS - An SMS::Send driver for the coolsms.co.kr service
 
 =head1 VERSION
 
-version 0.008
+version 1.000
 
 =head1 SYNOPSIS
 
@@ -285,18 +286,15 @@ version 0.008
 
     # create the sender object
     my $sender = SMS::Send->new('KR::CoolSMS',
-        _ssl      => 1,
-        _user     => 'keedi',
-        _password => 'mypass',
-        _type     => 'sms',
-        _from     => '01025116893',
+        _api_key    => 'XXXXXXXXXXXXXXXX',
+        _api_secret => 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+        _from       => '01025116893',
     );
 
     # send a message
     my $sent = $sender->send_sms(
-        text  => 'You message may use up to 80 chars and must be utf8',
-        to    => '01025116893',
-        _from => '02114', # you can override $self->_from
+        text  => 'You message may use up to 88 chars and must be utf8',
+        to    => '01012345678',
     );
 
     unless ( $sent->{success} ) {
@@ -307,6 +305,25 @@ version 0.008
         warn Dumper $sent->{detail};
     }
 
+    # Of course you can send LMS
+    my $sender = SMS::Send->new('KR::CoolSMS',
+        _api_key    => 'XXXXXXXXXXXXXXXX',
+        _api_secret => 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+        _type       => 'lms',
+        _from       => '01025116893',
+    );
+
+    # You can override _from or _type
+
+    # send a message
+    my $sent = $sender->send_sms(
+        text     => 'You LMS message may use up to 2000 chars and must be utf8',
+        to       => '01025116893',
+        _from    => '02114',             # you can override $self->_from
+        _type    => 'LMS',               # you can override $self->_type
+        _subject => 'This is a subject', # subject is optional & up to 40 chars
+    );
+
 =head1 DESCRIPTION
 
 SMS::Send driver for sending SMS messages with the L<coolsms SMS service|http://api.coolsms.co.kr>.
@@ -316,38 +333,28 @@ You'll need L<IO::Socket::SSL> at least 1.84 version to use SSL support for HTTP
 
 =head2 _url
 
-Do not change this value except for testing purpose.
-Default is C<"api.coolsms.co.kr/sendmsg">.
+DO NOT change this value except for testing purpose.
+Default is C<"api.coolsms.co.kr/1/send">.
 
 =head2 _agent
 
 The agent value is sent as the "User-Agent" header in the HTTP requests.
 Default is C<"SMS-Send-KR-CoolSMS/#.###">.
 
-=head2 _ssl
-
-If this is set, then use HTTPS rather than HTTP.
-Default is C<0>.
-
 =head2 _timeout
 
 HTTP request timeout seconds.
 Default is C<3>.
 
-=head2 _user
+=head2 _api_key
 
 B<Required>.
-Username to login for coolsms.
+coolsms API key for REST API.
 
-=head2 _password
+=head2 _api_secret
 
 B<Required>.
-Password to login for coolsms.
-
-=head2 _enc
-
-Password encryption method to transfer password over HTTP/HTTPS.
-Currently only C<"md5"> is supported.
+coolsms API secret for REST API.
 
 =head2 _from
 
@@ -357,14 +364,19 @@ Source number to send sms.
 =head2 _type
 
 Type of sms.
-Currently only C<sms> is supported.
-Default is C<"sms">.
+Currently C<SMS> and C<LMS> are supported.
+Default is C<"SMS">.
 
 =head2 _country
 
 Country code to route the sms.
 This is for destination number.
 Default is C<"KR">.
+
+=head2 _delay
+
+Delay second between sending sms.
+Default is C<0>.
 
 =head1 METHODS
 
@@ -390,15 +402,27 @@ to
 
 =item *
 
+_from
+
+=item *
+
+_country
+
+=item *
+
+_type
+
+=item *
+
+_delay
+
+=item *
+
+_subject
+
+=item *
+
 _epoch
-
-=item *
-
-_mid
-
-=item *
-
-_gid
 
 =back
 
@@ -420,7 +444,7 @@ L<IO::Socket::SSL>
 
 =item *
 
-L<coolsms API Manual|http://api.coolsms.co.kr>
+L<coolsms REST API|http://www.coolsms.co.kr/REST_API>
 
 =back
 
@@ -430,7 +454,7 @@ Keedi Kim - 김도형 <keedi@cpan.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2013 by Keedi Kim.
+This software is copyright (c) 2014 by Keedi Kim.
 
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
