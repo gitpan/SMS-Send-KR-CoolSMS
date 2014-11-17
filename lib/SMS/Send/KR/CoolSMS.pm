@@ -1,6 +1,6 @@
 package SMS::Send::KR::CoolSMS;
 # ABSTRACT: An SMS::Send driver for the coolsms.co.kr service
-$SMS::Send::KR::CoolSMS::VERSION = '1.000';
+$SMS::Send::KR::CoolSMS::VERSION = '1.001';
 use strict;
 use warnings;
 use parent qw( SMS::Send::Driver );
@@ -11,7 +11,7 @@ use HTTP::Tiny;
 use JSON;
 use String::Random;
 
-our $URL     = "api.coolsms.co.kr/1/send";
+our $URL     = "https://api.coolsms.co.kr/sms/1.1";
 our $AGENT   = 'SMS-Send-KR-CoolSMS/' . $SMS::Send::KR::CoolSMS::VERSION;
 our $TIMEOUT = 3;
 our $TYPE    = 'SMS';
@@ -138,6 +138,62 @@ sub new {
     return $self;
 }
 
+sub _auth_params {
+    my $self = shift;
+
+    my $api_key    = $self->{_api_key};
+    my $api_secret = $self->{_api_secret};
+
+    my %auth_params = do {
+        my $time       = time;
+        my $salt       = String::Random::random_regex('\w{30}');
+        my $signature  = Digest::HMAC_MD5::hmac_md5_hex( "$time$salt", $api_secret );
+
+         (
+            api_key   => $api_key,
+            timestamp => $time,
+            salt      => $salt,
+            signature => $signature,
+            algorithm => 'md5',
+            encoding  => 'hex',
+        );
+    };
+
+    return %auth_params;
+}
+
+sub balance {
+    my $self = shift;
+
+    my %ret = (
+        success => 0,
+        reason  => q{},
+        detail  => +{},
+    );
+
+    my $http = HTTP::Tiny->new(
+        agent       => $self->{_agent},
+        timeout     => $self->{_timeout},
+        SSL_options => { SSL_hostname => q{} }, # coolsms does not support SNI
+    ) or $ret{reason} = 'cannot generate HTTP::Tiny object', return \%ret;
+    my $url = $self->{_url} . "/balance";
+
+    my $params = $http->www_form_urlencode(+{ $self->_auth_params });
+    my $res = $http->get( "$url?$params" );
+    $ret{reason} = 'cannot get valid response for GET request';
+    if ( $res && $res->{success} ) {
+        $ret{detail}  = decode_json( $res->{content} );
+        $ret{reason}  = 'OK';
+        $ret{success} = 1;
+    }
+    else {
+        $ret{detail} = $res;
+        $ret{reason} = $res->{reason};
+    }
+
+    return \%ret;
+}
+
 sub send_sms {
     my $self   = shift;
     my %params = (
@@ -150,16 +206,14 @@ sub send_sms {
         @_,
     );
 
-    my $text       = $params{text};
-    my $to         = $params{to};
-    my $from       = $params{_from};
-    my $country    = $params{_country};
-    my $type       = $params{_type};
-    my $delay      = $params{_delay};
-    my $subject    = $params{_subject};
-    my $epoch      = $params{_epoch};
-    my $api_key    = $self->{_api_key};
-    my $api_secret = $self->{_api_secret};
+    my $text    = $params{text};
+    my $to      = $params{to};
+    my $from    = $params{_from};
+    my $country = $params{_country};
+    my $type    = $params{_type};
+    my $delay   = $params{_delay};
+    my $subject = $params{_subject};
+    my $epoch   = $params{_epoch};
 
     my %ret = (
         success => 0,
@@ -176,25 +230,7 @@ sub send_sms {
         timeout     => $self->{_timeout},
         SSL_options => { SSL_hostname => q{} }, # coolsms does not support SNI
     ) or $ret{reason} = 'cannot generate HTTP::Tiny object', return \%ret;
-    my $url = "https://$URL";
-
-    #
-    # authentication
-    #
-    my %auth_params = do {
-        my $time       = time;
-        my $salt       = String::Random::random_regex('\w{30}');
-        my $signature  = Digest::HMAC_MD5::hmac_md5_hex( "$time$salt", $api_secret );
-
-         (
-            api_key   => $api_key,
-            timestamp => $time,
-            salt      => $salt,
-            signature => $signature,
-            algorithm => 'md5',
-            encoding  => 'hex',
-        );
-    };
+    my $url = $self->{_url} . "/send";
 
     #
     # country & to: adjust country code and destination number
@@ -230,7 +266,7 @@ sub send_sms {
     undef $subject if $type =~ m/SMS/i;
 
     my %form = (
-        %auth_params,
+        $self->auth_params, # authentication
         to       => $to,
         from     => $from,
         text     => $text,
@@ -278,7 +314,7 @@ SMS::Send::KR::CoolSMS - An SMS::Send driver for the coolsms.co.kr service
 
 =head1 VERSION
 
-version 1.000
+version 1.001
 
 =head1 SYNOPSIS
 
@@ -323,6 +359,11 @@ version 1.000
         _type    => 'LMS',               # you can override $self->_type
         _subject => 'This is a subject', # subject is optional & up to 40 chars
     );
+
+    # check the balance
+    my $balance = $sender->balance;
+    printf "cash: \n", $banalce->cash;
+    printf "point: \n", $banalce->point;
 
 =head1 DESCRIPTION
 
@@ -425,6 +466,10 @@ _subject
 _epoch
 
 =back
+
+=head2 balance
+
+This method checks the balance.
 
 =head1 SEE ALSO
 
