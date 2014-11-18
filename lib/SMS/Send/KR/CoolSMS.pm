@@ -1,6 +1,6 @@
 package SMS::Send::KR::CoolSMS;
 # ABSTRACT: An SMS::Send driver for the coolsms.co.kr service
-$SMS::Send::KR::CoolSMS::VERSION = '1.001';
+$SMS::Send::KR::CoolSMS::VERSION = '1.002';
 use strict;
 use warnings;
 use parent qw( SMS::Send::Driver );
@@ -314,7 +314,7 @@ SMS::Send::KR::CoolSMS - An SMS::Send driver for the coolsms.co.kr service
 
 =head1 VERSION
 
-version 1.001
+version 1.002
 
 =head1 SYNOPSIS
 
@@ -362,8 +362,10 @@ version 1.001
 
     # check the balance
     my $balance = $sender->balance;
-    printf "cash: \n", $banalce->cash;
-    printf "point: \n", $banalce->point;
+    if ( $balance->{success} ) {
+        printf "cash: \n", $banalce->{detail}{cash};
+        printf "point: \n", $banalce->{detail}{point};
+    }
 
 =head1 DESCRIPTION
 
