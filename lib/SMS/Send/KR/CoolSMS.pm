@@ -1,6 +1,6 @@
 package SMS::Send::KR::CoolSMS;
 # ABSTRACT: An SMS::Send driver for the coolsms.co.kr service
-$SMS::Send::KR::CoolSMS::VERSION = '1.002';
+$SMS::Send::KR::CoolSMS::VERSION = '1.003';
 use strict;
 use warnings;
 use parent qw( SMS::Send::Driver );
@@ -266,7 +266,7 @@ sub send_sms {
     undef $subject if $type =~ m/SMS/i;
 
     my %form = (
-        $self->auth_params, # authentication
+        $self->_auth_params, # authentication
         to       => $to,
         from     => $from,
         text     => $text,
@@ -314,7 +314,7 @@ SMS::Send::KR::CoolSMS - An SMS::Send driver for the coolsms.co.kr service
 
 =head1 VERSION
 
-version 1.002
+version 1.003
 
 =head1 SYNOPSIS
 
